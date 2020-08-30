@@ -38,9 +38,13 @@
     <None Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriver.RPC.Server.c" />
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriverRPC_p.c" />
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriverRPC_s.c" />
     <ClCompile Include="Callouts.c" />
     <ClCompile Include="Device.c" />
     <ClCompile Include="Driver.c" />
+    <ClCompile Include="fakestdio.c" />
     <ClCompile Include="Queue.c" />
     <ClCompile Include="ShadowUtilities.c" />
     <ClCompile Include="WfpHelper.c" />
@@ -187,12 +191,12 @@
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppScanConfigurationData Condition="'%(ClCompile.ScanConfigurationData)' == ''">trace.h</WppScanConfigurationData>
       <WppKernelMode>true</WppKernelMode>
-      <PreprocessorDefinitions>NDIS_SUPPORT_NDIS6;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDIS_SUPPORT_NDIS6;RPC_NO_WINDOWS_H;_KRPCENV_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>$(DDK_LIB_PATH)fwpkclnt.lib;$(DDK_LIB_PATH)\ndis.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(DDK_LIB_PATH)fwpkclnt.lib;$(DDK_LIB_PATH)\ndis.lib;rpcrt4.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

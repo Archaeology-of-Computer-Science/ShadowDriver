@@ -7,9 +7,9 @@ long InitializeShadowDriverRPCServer()
 {
 	RPC_STATUS status;
 
-	LPWSTR pszProtocolSequence = L"ncacn_np";
-	LPWSTR pszSecurity = NULL;
-	LPWSTR pszEndpoint = L"\\pipe\\ShadowDriverRPC";
+	RPC_CSTR pszProtocolSequence = (RPC_CSTR)L"ncacn_np";
+	RPC_CSTR pszSecurity = (RPC_CSTR)NULL;
+	RPC_CSTR pszEndpoint = (RPC_CSTR)L"\\pipe\\ShadowDriverRPC";
 	unsigned int    cMinCalls = 1;
 	unsigned int    fDontWait = FALSE;
 
@@ -36,8 +36,5 @@ long InitializeShadowDriverRPCServer()
 		RPC_C_LISTEN_MAX_CALLS_DEFAULT,
 		fDontWait);
 
-	if (status)
-	{
-		return status;
-	}
+	return status;
 }

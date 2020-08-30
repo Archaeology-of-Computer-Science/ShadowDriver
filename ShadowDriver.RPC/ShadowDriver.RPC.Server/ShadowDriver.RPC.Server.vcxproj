@@ -141,7 +141,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ShadowDriver.RPC.Server.c" />
-    <ClCompile Include="ShadowDriverRPC_p.cpp" />
+    <ClCompile Include="ShadowDriverRPC_p.c" />
     <ClCompile Include="ShadowDriverRPC_s.c" />
     <ClCompile Include="main.c" />
   </ItemGroup>

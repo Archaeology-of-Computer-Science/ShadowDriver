@@ -17,6 +17,12 @@
       <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
       <Extensions>inf;inv;inx;mof;mc;</Extensions>
     </Filter>
+    <Filter Include="Source Files\RPCServer">
+      <UniqueIdentifier>{d0bda2ec-1ef5-40d3-b111-56ed7c5dadff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\RPCHeader">
+      <UniqueIdentifier>{633358f5-58fc-4e0e-aca0-f18cd88ac1f1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
@@ -69,6 +75,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ShadowUtilities.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriver.RPC.Server.c">
+      <Filter>Source Files\RPCServer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriverRPC_s.c">
+      <Filter>Source Files\RPCServer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ShadowDriver.RPC\ShadowDriver.RPC.Server\ShadowDriverRPC_p.c">
+      <Filter>Source Files\RPCServer</Filter>
+    </ClCompile>
+    <ClCompile Include="fakestdio.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

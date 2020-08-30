@@ -16,14 +16,13 @@ Environment:
 
 #include "driver.h"
 #include "driver.tmh"
-#include <windowsx.h>
+#include "../ShadowDriver.RPC/ShadowDriver.RPC.Server/ShadowDriver.RPC.Server.h"
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text (INIT, DriverEntry)
 #pragma alloc_text (PAGE, ShadowDriverEvtDeviceAdd)
 #pragma alloc_text (PAGE, ShadowDriverEvtDriverContextCleanup)
 #endif
-
 
 PDRIVER_OBJECT driversss;
 VOID Unload(PDRIVER_OBJECT DriverObject)
@@ -36,6 +35,8 @@ void StartInitializeRPC(
 )
 {
     DbgPrintEx(DPFLTR_IHVVIDEO_ID, DPFLTR_INFO_LEVEL, "RPC Thread Created.\n");
+
+    long rpcStatus = InitializeShadowDriverRPCServer();
 }
 
 NTSTATUS InitializeRPCServer()
@@ -117,7 +118,7 @@ Return Value:
         return status;
     }
     //Æô¶¯RPC
-    status = InitializeRPCServer();
+    //status = InitializeRPCServer();
 
     DbgPrintEx(DPFLTR_IHVVIDEO_ID, DPFLTR_INFO_LEVEL, "First message.\n");
     DbgPrintEx(DPFLTR_IHVAUDIO_ID, 7, "Second message.\n");

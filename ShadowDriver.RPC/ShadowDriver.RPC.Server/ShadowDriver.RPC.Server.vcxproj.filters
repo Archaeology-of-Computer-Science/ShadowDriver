@@ -18,13 +18,13 @@
     <ClCompile Include="ShadowDriverRPC_s.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="ShadowDriverRPC_p.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="ShadowDriver.RPC.Server.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="main.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="ShadowDriverRPC_p.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
