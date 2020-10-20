@@ -18,10 +18,16 @@ Environment:
 #include "device.tmh"
 #include "Callouts.h"
 
-UINT32 WpsCalloutId;
-UINT32 WpmCalloutId;
+//当回调函数向设备注册时获得。
+UINT32 WpsSendCalloutId;
+UINT32 WpsReceiveCalloutId;
 
-HANDLE InjectHandle = NULL;
+//当回调函数添加进过滤引擎时获得。
+UINT32 WpmSendCalloutId;
+UINT32 WpmReceiveCalloutId;
+
+HANDLE SendInjectHandle = NULL;
+HANDLE ReceiveInjectHandle = NULL;
 
 void PrintNetBufferList(PNET_BUFFER_LIST packet)
 {
@@ -75,7 +81,7 @@ void PrintNetBufferList(PNET_BUFFER_LIST packet)
 
 void InjectPacket(PNET_BUFFER_LIST clonedPacket)
 {
-	FwpsInjectionHandleCreate0(AF_INET, FWPS_INJECTION_TYPE_NETWORK, &InjectHandle);
+	FwpsInjectionHandleCreate0(AF_INET, FWPS_INJECTION_TYPE_NETWORK, &SendInjectHandle);
 }
 
 void InjectCompleted(
@@ -86,7 +92,7 @@ void InjectCompleted(
 {
 	NDIS_STATUS status = netBufferList->Status;
 
-	FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState0(InjectHandle, netBufferList, NULL);
+	FWPS_PACKET_INJECTION_STATE injectionState = FwpsQueryPacketInjectionState0(SendInjectHandle, netBufferList, NULL);
 
 	if (status == NDIS_STATUS_SUCCESS)
 	{
@@ -99,6 +105,79 @@ void InjectCompleted(
 
 }
 
+VOID ModifyPacket(PNET_BUFFER_LIST packet)
+{
+	if (packet != NULL)
+	{
+		PNET_BUFFER netBuffer = NET_BUFFER_LIST_FIRST_NB(packet);
+
+		//获取数据缓冲区
+		PBYTE dataBuffer = (PBYTE)NdisGetDataBuffer(netBuffer, netBuffer->DataLength, NULL, 1, 0);
+
+		//从MDL中提取信息
+		PVOID mdlBuffer = MmGetMdlVirtualAddress(netBuffer->CurrentMdl);
+
+		//dataBuffer = (PBYTE)mdlBuffer;
+
+		int mdlStringLength = CaculateHexStringLength(netBuffer->CurrentMdl->ByteCount);
+		PVOID outputs = ExAllocatePoolWithTag(NonPagedPool, mdlStringLength, 'op');
+		ConvertBytesArrayToHexString(mdlBuffer, netBuffer->CurrentMdl->ByteCount, outputs, mdlStringLength);
+		DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "CurrentMDL: %s\t\n", outputs);
+
+		char toModifyChar = ((PCHAR)mdlBuffer)[16];
+
+		((PCHAR)mdlBuffer)[16] = (CHAR)192;
+		((PCHAR)mdlBuffer)[17] = (CHAR)168;
+		((PCHAR)mdlBuffer)[18] = (CHAR)1;
+		((PCHAR)mdlBuffer)[19] = (CHAR)101;
+
+		ULONG dataLength = netBuffer->DataLength;
+		ULONG ipPacketLength = 20;
+		ULONG ipaddrOffset = 12;
+		PBYTE ipAddrPos = (dataBuffer += dataLength);
+
+		BYTE modifiedAddress[] = { 192, 168, 10, 1 };
+
+		//修改IP地址
+		for (int i = 0; i < 4; ++i, ++ipAddrPos)
+		{
+			ipAddrPos[i] = modifiedAddress[i];
+		}
+
+		//INT32 sum = 0;
+		////将校验和置零
+		//dataBuffer[10] = dataBuffer[11] = 0;
+
+		////计算校验和
+		//for (int i = 0; i < 10; i += 2)
+		//{
+		//	WORD dBytes = dataBuffer[i];
+		//	dBytes = (dBytes << 16) + dataBuffer[i+1];
+
+		//	sum += dBytes;
+		//}
+
+		////处理进位部分
+		//while (sum > 0xFFFF)
+		//{
+		//	UINT32 carryPart = (sum & 0x00FF0000) >> 16;
+		//	sum = sum & 0xFFFF;
+		//	sum += carryPart;
+		//}
+
+		////截取最低4字节
+		//DWORD dwordSum = sum & 0xFFFF;
+
+		////取反码
+		//dwordSum = ~dwordSum;
+
+		////填充进数据包
+		//(*(PDWORD) & (dataBuffer[10])) = dwordSum;
+
+		ConvertBytesArrayToHexString(mdlBuffer, netBuffer->CurrentMdl->ByteCount, outputs, mdlStringLength);
+		DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "ModifiedMDL: %s\t\n", outputs);
+	}
+}
 
 
 VOID NTAPI ClassifyFn(
@@ -121,10 +200,12 @@ VOID NTAPI ClassifyFn(
 	FWPS_PACKET_INJECTION_STATE injectionState = FWPS_PACKET_NOT_INJECTED;
 
 	packet = (NET_BUFFER_LIST*)layerData;
+	PrintNetBufferList(packet);
 
-	if (InjectHandle != NULL)
+	//暂时先让这段不进行观察过去的包
+	if (SendInjectHandle != NULL && FALSE)
 	{
-		injectionState = FwpsQueryPacketInjectionState0(InjectHandle, packet, NULL);
+		injectionState = FwpsQueryPacketInjectionState0(SendInjectHandle, packet, NULL);
 
 		//如果捕获的数据包是主动
 		if (injectionState == FWPS_PACKET_INJECTED_BY_SELF ||
@@ -136,7 +217,7 @@ VOID NTAPI ClassifyFn(
 		//该数据包不是被手动注入的数据包
 		else if (injectionState == FWPS_PACKET_NOT_INJECTED)
 		{
-			PrintNetBufferList(packet);
+			
 			status = FwpsAllocateCloneNetBufferList0(packet, NULL, NULL, 0, &clonedPacket);
 
 			//如果为克隆的数据包创建缓冲区失败的话，则阻断这个数据包。
@@ -147,9 +228,10 @@ VOID NTAPI ClassifyFn(
 			//如果数据包缓冲区创建成功
 			else
 			{
-
+				ModifyPacket(clonedPacket);
+				PrintNetBufferList(clonedPacket);
 				//status = FwpsInjectNetworkSendAsync0(InjectHandle, NULL, 0, UNSPECIFIED_COMPARTMENT_ID, clonedPacket, InjectCompleted, NULL);
-				status = FwpsInjectNetworkSendAsync0(InjectHandle, NULL, 0, inMetaValues->compartmentId, clonedPacket, InjectCompleted, NULL);
+				status = FwpsInjectNetworkSendAsync0(SendInjectHandle, NULL, 0, inMetaValues->compartmentId, clonedPacket, InjectCompleted, NULL);
 
 				if (!NT_SUCCESS(status))
 				{
@@ -165,56 +247,8 @@ VOID NTAPI ClassifyFn(
 			classifyOut->actionType = FWP_ACTION_BLOCK;
 			classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
 		}
-
+		classifyOut->actionType = FWP_ACTION_PERMIT;
 	}
-
-
-	//if (classifyOut->rights & FWPS_RIGHT_ACTION_WRITE)
-	//{
-	//    ULONG localIp, remoteIp;
-
-	//    localIp = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_LOCAL_ADDRESS].value.uint32;
-	//    remoteIp = inFixedValues->incomingValue[FWPS_FIELD_ALE_AUTH_CONNECT_V4_IP_REMOTE_ADDRESS].value.uint32;
-
-	//    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "Ready to block\n");
-
-	//    //打印IP报
-	//    if (packet->FirstNetBuffer != NULL)
-	//    {
-	//        PNET_BUFFER_LIST clonedBuffer;
-
-	//        PNET_BUFFER netBuffer = NET_BUFFER_LIST_FIRST_NB(packet);
-
-	//        dataBuffer = NdisGetDataBuffer(netBuffer, netBuffer->DataLength, NULL, 1, 0);
-
-
-	//        size_t outputLength = CaculateHexStringLength(netBuffer->DataLength);
-	//        outputs = ExAllocatePoolWithTag(NonPagedPool, outputLength, 'op');
-	//        ConvertBytesArrayToHexString(dataBuffer, netBuffer->DataLength, outputs, 400);
-
-	//        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "%s\t\n", outputs);
-	//        ExFreePoolWithTag(outputs, 'op');
-	//    }
-	//    
-	//    status = FwpsAllocateCloneNetBufferList0(packet, NULL, NULL,0, &clonedPacket);
-
-	//    //classifyOut->actionType = FWP_ACTION_BLOCK;
-	//    //classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-
-	//    //if (NT_SUCCESS(status))
-	//    //{
-	//    //    status = FwpsInjectNetworkSendAsync0(InjectHandle, NULL, 0, inMetaValues->compartmentId, clonedPacket, InjectCompleted, NULL);
-	//    //}
-	//}
-	//else
-	//{
-	//    classifyOut->actionType = FWP_ACTION_PERMIT;
-
-	//    if (filter->flags & FWPS_FILTER_FLAG_CLEAR_ACTION_RIGHT)
-	//    {
-	//        classifyOut->rights &= ~FWPS_RIGHT_ACTION_WRITE;
-	//    }
-	//}
 }
 
 NTSTATUS NTAPI NotifyFn(
@@ -237,16 +271,34 @@ NTSTATUS RegisterCalloutFuntions(IN PDEVICE_OBJECT deviceObject)
 {
 	NTSTATUS status;
 
+	FWPS_CALLOUT0 sendCallout = { 0 };
 
+	sendCallout.calloutKey = WFP_SEND_ESTABLISHED_CALLOUT_GUID;
+	sendCallout.flags = 0;
+	sendCallout.classifyFn = ClassifyFn;
+	sendCallout.notifyFn = NotifyFn;
+	sendCallout.flowDeleteFn = FlowDeleteFn;
+	status = FwpsCalloutRegister0(deviceObject, &sendCallout, &WpsSendCalloutId);
 
-	FWPS_CALLOUT0 callout = { 0 };
+	if (!NT_SUCCESS(status))
+	{
+		return status;
+	}
 
-	callout.calloutKey = WFP_ESTABLISHED_CALLOUT_GUID;
-	callout.flags = 0;
-	callout.classifyFn = ClassifyFn;
-	callout.notifyFn = NotifyFn;
-	callout.flowDeleteFn = FlowDeleteFn;
-	status = FwpsCalloutRegister0(deviceObject, &callout, &WpsCalloutId);
+	DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "Registered Send Callout to Device Object.\n");
+
+	FWPS_CALLOUT0 receiveCallout = { 0 };
+	receiveCallout.calloutKey = WFP_RECEIVE_ESTABLISHED_CALLOUT_GUID;
+	receiveCallout.flags = 0;
+	receiveCallout.classifyFn = ClassifyFn;
+	receiveCallout.notifyFn = NotifyFn;
+	receiveCallout.flowDeleteFn = FlowDeleteFn;
+	status = FwpsCalloutRegister0(deviceObject, &receiveCallout, &WpsReceiveCalloutId);
+
+	if (NT_SUCCESS(status))
+	{
+		DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "Registered Receive Callout to Device Object.\n");
+	}
 
 	return status;
 }
@@ -255,34 +307,69 @@ NTSTATUS CreateInjector()
 {
 	NTSTATUS status;
 
-	status = FwpsInjectionHandleCreate0(AF_INET, FWPS_INJECTION_TYPE_NETWORK | FWPS_INJECTION_TYPE_FORWARD, &InjectHandle);
+	status = FwpsInjectionHandleCreate0(AF_INET, FWPS_INJECTION_TYPE_NETWORK | FWPS_INJECTION_TYPE_FORWARD, &SendInjectHandle);
+
+	status = FwpsInjectionHandleCreate0(AF_INET, FWPS_INJECTION_TYPE_NETWORK | FWPS_INJECTION_TYPE_FORWARD, &ReceiveInjectHandle);
 
 	return status;
 }
 
+/// <summary>
+/// 添加回调到过滤引擎
+/// </summary>
+/// <param name="engineHandle">过滤引擎句柄</param>
+/// <returns>状态</returns>
 NTSTATUS AddCalloutToWfp(IN HANDLE engineHandle)
 {
-	FWPM_CALLOUT0 callout = { 0 };
-	callout.flags = 0;
-	callout.displayData.description = L"I think you know what it is.";
-	callout.displayData.name = L"ShadowCallout";
-	callout.calloutKey = WFP_ESTABLISHED_CALLOUT_GUID;
-	callout.applicableLayer = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
+	NTSTATUS status;
+	FWPM_CALLOUT0 sendCallout = { 0 };
 
+	//用于捕捉再发送道路上的数据包
+	sendCallout.flags = 0;
+	sendCallout.displayData.description = L"I think you know what it is.";
+	sendCallout.displayData.name = L"ShadowSendCallouts";
+	sendCallout.calloutKey = WFP_SEND_ESTABLISHED_CALLOUT_GUID;
+	sendCallout.applicableLayer = FWPM_LAYER_OUTBOUND_IPPACKET_V4;
+	status = FwpmCalloutAdd0(engineHandle, &sendCallout, NULL, &WpmSendCalloutId);
+	
 
-
-	return FwpmCalloutAdd0(engineHandle, &callout, NULL, &WpmCalloutId);
-}
-
-VOID UnRegisterCallout(HANDLE engineHandle)
-{
-	if (WpmCalloutId != 0)
+	if (!NT_SUCCESS(status))
 	{
-		FwpmCalloutDeleteById(engineHandle, WpmCalloutId);
+		return status;
 	}
 
-	if (WpsCalloutId != 0)
+	DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "Added Send Callout to WFP.\n");
+
+	//用于捕捉在接收道路上的数据包
+	FWPM_CALLOUT0 receiveCallout = { 0 };
+	receiveCallout.flags = 0;
+	receiveCallout.displayData.description = L"I think you know what it is.";
+	receiveCallout.displayData.name = L"ShadowReceiveCallouts";
+	receiveCallout.calloutKey = WFP_RECEIVE_ESTABLISHED_CALLOUT_GUID;
+	receiveCallout.applicableLayer = FWPM_LAYER_INBOUND_IPPACKET_V4;
+	status = FwpmCalloutAdd0(engineHandle, &receiveCallout, NULL, &WpmReceiveCalloutId);
+
+	if (NT_SUCCESS(status))
 	{
-		FwpsCalloutUnregisterById0(WpsCalloutId);
+		DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "Added Receive Callout to WFP.\n");
+	}
+
+	return status;
+}
+
+/// <summary>
+/// 向过滤引擎和设备注销回调。
+/// </summary>
+/// <param name="engineHandle"></param>
+VOID UnRegisterCallout(HANDLE engineHandle)
+{
+	if (WpmSendCalloutId != 0)
+	{
+		FwpmCalloutDeleteById(engineHandle, WpmSendCalloutId);
+	}
+
+	if (WpsSendCalloutId != 0)
+	{
+		FwpsCalloutUnregisterById0(WpsSendCalloutId);
 	}
 }
